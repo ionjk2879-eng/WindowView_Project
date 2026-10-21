@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<title>창밖 뷰 계산기</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  /* Layout: 3D street scene on top (left on wide screens), result panel below (right on wide screens).
+     The scene keeps one light look (white blocks); the panel follows the viewer's theme. */
+  :root {
+    --page: #f3f5f8;
+    --panel: #ffffff;
+    --ink: #151a23;
+    --ink-soft: #5d6777;
+    --line: #dde2e9;
+    --chip: #eef1f5;
+    --accent: #2563eb;
+    --accent-soft: #e3edff;
+    --ok: #1f8a4c;
+    --ok-soft: #dcf2e4;
+    --bad: #c2410c;
+    --bad-soft: #fde4d6;
+    --mute-soft: #e8ebf0;
+    --font: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #11151b; --panel: #181d25; --ink: #e8ecf2; --ink-soft: #9ba6b6; --line: #2a313d; --chip: #222934;
+      --ok: #5fd08f; --ok-soft: #173525; --bad: #ff9b6a; --bad-soft: #3a2116; --mute-soft: #252c37; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #11151b; --panel: #181d25; --ink: #e8ecf2; --ink-soft: #9ba6b6; --line: #2a313d; --chip: #222934;
+    --ok: #5fd08f; --ok-soft: #173525; --bad: #ff9b6a; --bad-soft: #3a2116; --mute-soft: #252c37; color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--page); color: var(--ink); font-family: var(--font); }
+  .app { min-height: 100%; display: flex; flex-direction: column; }
+  .stage {
+    position: relative;
+    height: 56vh;
+    min-height: 320px;
+    background: #e9edf2;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .hint {
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    background: rgba(21, 26, 35, 0.82);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 7px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .zoom {
+    position: absolute;
+    right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .zoom button {
+    width: 38px; height: 38px; border-radius: 10px; border: 0;
+    background: rgba(255, 255, 255, 0.92); color: #151a23; font-size: 20px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(21, 26, 35, 0.15);
+  }
+  .tlabel {
+    position: absolute;
+    transform: translate(-50%, -120%);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #151a23;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 1px 4px rgba(21, 26, 35, 0.15);
+  }
+  .tlabel.ok { box-shadow: inset 3px 0 0 #1f8a4c, 0 1px 4px rgba(21, 26, 35, 0.15); }
+  .tlabel.bad { box-shadow: inset 3px 0 0 #c2410c, 0 1px 4px rgba(21, 26, 35, 0.15); }
+
+  .panel {
+    flex: 1;
+    background: var(--panel);
+    padding-block: 20px 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .panel-in { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  @media (min-width: 920px) {
+    .app { flex-direction: row; height: 100%; }
+    .stage { flex: 1; height: auto; }
+    .panel { flex: none; width: 400px; overflow-y: auto; border-left: 1px solid var(--line); }
+  }
+  .eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); }
+  h1 { font-size: 22px; margin: 4px 0 0; text-wrap: balance; }
+  .sel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+  .sel-text { font-size: 14.5px; font-weight: 600; }
+  .sel-text small { display: block; font-size: 12.5px; font-weight: 400; color: var(--ink-soft); margin-top: 2px; }
+  .stepper { display: flex; align-items: center; gap: 4px; background: var(--chip); border-radius: 10px; padding: 3px; }
+  .stepper button { width: 32px; height: 32px; border: 0; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 18px; font-weight: 600; cursor: pointer; }
+  .stepper button:disabled { opacity: 0.4; cursor: default; }
+  .stepper span { min-width: 48px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .big { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .big b { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .big span { font-size: 14px; color: var(--ink-soft); }
+  .verdict { font-size: 14.5px; line-height: 1.6; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--ink); }
+
+  .seasons { display: flex; flex-direction: column; gap: 12px; }
+  .srow { display: grid; grid-template-columns: 72px minmax(0, 1fr) 76px; align-items: center; gap: 10px; }
+  .srow .name { font-size: 13px; font-weight: 600; }
+  .srow .name small { display: block; font-size: 11px; font-weight: 400; color: var(--ink-soft); }
+  .srow .val { font-size: 13.5px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .track { position: relative; height: 16px; border-radius: 5px; background: var(--mute-soft); overflow: hidden; }
+  .track .day { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .track .lit { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+  .axis { position: relative; height: 14px; margin-left: 82px; margin-right: 86px; font-size: 10.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .axis span { position: absolute; transform: translateX(-50%); }
+
+  .label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--ink-soft); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--line); background: var(--chip);
+    color: var(--ink); padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  }
+  .chips button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .time-row { display: flex; align-items: center; gap: 10px; }
+  .time-row input { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .time-row span { min-width: 72px; text-align: right; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .open-strip { display: flex; height: 26px; border-radius: 6px; overflow: hidden; gap: 1px; }
+  .open-strip i { flex: 1; display: block; }
+  .open-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-soft); margin-top: 4px; }
+
+  .tlist { display: flex; flex-direction: column; }
+  .trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .trow:first-child { border-top: 0; }
+  .trow .tn { font-size: 14px; font-weight: 600; }
+  .trow .tm { grid-column: 1; font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .chip { grid-row: 1 / span 2; grid-column: 2; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); }
+  .chip.mute { background: var(--mute-soft); color: var(--ink-soft); }
+  .note { font-size: 12px; line-height: 1.6; color: var(--ink-soft); border-top: 1px solid var(--line); padding-top: 14px; }
+  .hint { max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; }
+  .tools { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 12px; display: flex; gap: 6px; }
+  .tools[hidden] { display: none; }
+  .tools button {
+    height: 38px; padding: 0 12px; border-radius: 10px; border: 0; font: inherit; font-size: 13px; font-weight: 600;
+    background: rgba(255, 255, 255, 0.92); color: #151a23; box-shadow: 0 2px 8px rgba(21, 26, 35, 0.15); cursor: pointer;
+  }
+  .tools button[aria-pressed="true"] { background: #151a23; color: #fff; }
+  .search-btn { font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--line); background: var(--chip); color: var(--ink); padding: 5px 11px; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
+  .search-overlay { position: fixed; inset: 0; z-index: 200; background: var(--panel); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+  .search-overlay[hidden] { display: none; }
+  .search-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .search-head input { flex: 1; font: inherit; font-size: 16px; border: 0; background: transparent; color: var(--ink); outline: 0; min-width: 0; }
+  .search-head button { width: 36px; height: 36px; border: 0; background: var(--chip); border-radius: 8px; font-size: 16px; cursor: pointer; color: var(--ink); flex-shrink: 0; }
+  .search-list { flex: 1; overflow-y: auto; }
+  .sresult { display: block; width: 100%; text-align: left; font: inherit; border: 0; background: 0; padding: 13px 16px; border-top: 1px solid var(--line); cursor: pointer; color: var(--ink); }
+  .sresult:first-child { border-top: 0; }
+  .sresult:active { background: var(--chip); }
+  .sresult-name { font-size: 15px; font-weight: 600; }
+  .sresult-dist { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .search-empty { padding: 48px 16px; text-align: center; color: var(--ink-soft); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="stage" id="stage" aria-label="대전 은행동 일대 흰 블록 건물. 건물 벽을 눌러 창문을 고를 수 있어요.">
+    <div class="hint" id="hint">건물 벽을 눌러 내 방 창문을 고르세요</div>
+    <div class="tools" id="tools" hidden>
+      <button type="button" id="btnLocate">내 위치</button>
+      <button type="button" id="btnCompass" aria-pressed="false">나침반</button>
+      <button type="button" id="btnShare">공유</button>
+    </div>
+    <div class="zoom">
+      <button type="button" id="zoomIn" aria-label="가까이">+</button>
+      <button type="button" id="zoomOut" aria-label="멀리">−</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-in" id="panel">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div class="eyebrow">대전 은행동 샘플</div>
+          <button type="button" id="btnSearch" class="search-btn">건물 검색</button>
+        </div>
+        <h1>이 창문에서 뭐가 보일까?</h1>
+      </div>
+      <div class="chips" id="modeTabs" aria-label="계산 종류">
+        <button type="button" data-mode="view" aria-pressed="true">창밖 뷰</button>
+        <button type="button" data-mode="sun" aria-pressed="false">햇빛 시간</button>
+      </div>
+      <div class="sel">
+        <div class="sel-text" id="selText">창문을 고르는 중</div>
+        <div class="stepper" aria-label="층 선택">
+          <button type="button" id="floorDown" aria-label="한 층 아래">−</button>
+          <span id="floorVal">-</span>
+          <button type="button" id="floorUp" aria-label="한 층 위">+</button>
+        </div>
+      </div>
+      <div id="modePanel"></div>
+      <div class="note" id="note"></div>
+    </div>
+  </div>
+</div>
+
+<div class="search-overlay" id="searchOverlay" hidden>
+  <div class="search-head">
+    <button type="button" id="searchClose" aria-label="닫기">✕</button>
+    <input type="search" id="searchInput" placeholder="건물 이름 검색" autocomplete="off" autocorrect="off">
+  </div>
+  <div class="search-list" id="searchList"></div>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+function start(D) {
+  let MODE = "view"; const R = D.R;
+  const FLOOR_H = D.floorH || 3.2; // 높이 값이 없을 때 쓰는 이 지역 평균 층고
+  const stage = document.getElementById("stage");
+  const ACCENT = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+
+  // ───────── 건물 준비 (계산용) ─────────
+  const B = D.buildings.map(([fl, p, hm, est]) => {
+    const pts = [];
+    for (let i = 0; i < p.length; i += 2) pts.push([p[i], p[i + 1]]);
+    const xs = pts.map((q) => q[0]), zs = pts.map((q) => q[1]);
+    return { fl, est: !!est, fh: hm ? hm / fl : FLOOR_H, h: (hm || fl * FLOOR_H) + 0.4, pts, minx: Math.min(...xs), maxx: Math.max(...xs), minz: Math.min(...zs), maxz: Math.max(...zs) };
+  });
+  const HMAX = Math.max(...B.map((b) => b.h));
+
+  // 반직선(또는 선분)이 건물 벽에 막히는지: 막히면 { t, b } 반환
+  function blocked(px, py, pz, dx, dy, dz, tmax, skip) {
+    const reach = dy > 1e-6 ? (HMAX - py) / dy : Infinity;
+    const lim = Math.min(tmax, reach);
+    let best = null;
+    for (let i = 0; i < B.length; i++) {
+      const b = B[i];
+      if (i === skip) continue;
+      // 2D 상자 검사
+      let t0 = 0, t1 = lim;
+      if (Math.abs(dx) < 1e-9) { if (px < b.minx || px > b.maxx) continue; }
+      else {
+        let a = (b.minx - px) / dx, c = (b.maxx - px) / dx;
+        if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      }
+      if (Math.abs(dz) < 1e-9) { if (pz < b.minz || pz > b.maxz) continue; }
+      else {
+        let a = (b.minz - pz) / dz, c = (b.maxz - pz) / dz;
+        if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      }
+      if (t0 > t1) continue;
+      if (Math.min(py + dy * t0, py + dy * t1) > b.h) continue;
+      // 벽 하나씩
+      const pts = b.pts;
+      for (let k = 0; k < pts.length - 1; k++) {
+        const ax = pts[k][0], az = pts[k][1];
+        const sx = pts[k + 1][0] - ax, sz = pts[k + 1][1] - az;
+        const den = dx * sz - dz * sx;
+        if (Math.abs(den) < 1e-9) continue;
+        const qx = ax - px, qz = az - pz;
+        const t = (qx * sz - qz * sx) / den;
+        const u = (qx * dz - qz * dx) / den;
+        if (u < 0 || u > 1 || t < 0.05 || t > lim) continue;
+        const y = py + dy * t;
+        if (y >= 0 && y <= b.h && (!best || t < best.t)) best = { t, b: i };
+      }
+    }
+    return best;
+  }
+
+  // ───────── 해 ─────────
+  function dayOfYear(d) { return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000); }
+  // NOAA 태양 위치 공식 (오차 1분 안팎). N = 올해의 몇 번째 날, hourKST = 한국 시각
+  function sunDir(N, hourKST) {
+    const rad = Math.PI / 180;
+    const year = new Date().getFullYear();
+    const utcMs = Date.UTC(year, 0, 1) + (N - 1) * 86400000 + (hourKST - 9) * 3600000;
+    const T = (utcMs / 86400000 + 2440587.5 - 2451545) / 36525;
+    const L0 = ((280.46646 + T * (36000.76983 + 0.0003032 * T)) % 360 + 360) % 360;
+    const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+    const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+    const C = Math.sin(M * rad) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * M * rad) * (0.019993 - 0.000101 * T) + Math.sin(3 * M * rad) * 0.000289;
+    const om = 125.04 - 1934.136 * T;
+    const lam = L0 + C - 0.00569 - 0.00478 * Math.sin(om * rad);
+    const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+    const eps = eps0 + 0.00256 * Math.cos(om * rad);
+    const dec = Math.asin(Math.sin(eps * rad) * Math.sin(lam * rad));
+    const y = Math.tan(eps * rad / 2) ** 2;
+    const eot = 4 / rad * (y * Math.sin(2 * L0 * rad) - 2 * e * Math.sin(M * rad) + 4 * e * y * Math.sin(M * rad) * Math.cos(2 * L0 * rad)
+      - 0.5 * y * y * Math.sin(4 * L0 * rad) - 1.25 * e * e * Math.sin(2 * M * rad));
+    const tst = ((((hourKST - 9) * 60 + eot + 4 * D.lon) % 1440) + 1440) % 1440;
+    const H = (tst / 4 - 180) * rad, lat = D.lat * rad;
+    const alt = Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(H));
+    const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat)) + Math.PI;
+    return { alt, az, x: Math.sin(az) * Math.cos(alt), y: Math.sin(alt), z: -Math.cos(az) * Math.cos(alt) };
+  }
+  const HORIZON = -0.833 * Math.PI / 180; // 해돋이·해넘이 기준: 대기 굴절 + 해의 반지름
+  const TODAY_N = dayOfYear(new Date());
+  const SEASONS = [
+    { key: "today", name: "오늘", sub: (() => { const d = new Date(); return `${d.getMonth() + 1}월 ${d.getDate()}일`; })(), N: TODAY_N },
+    { key: "spring", name: "봄·가을", sub: "춘분 3월 20일", N: 80 },
+    { key: "summer", name: "여름", sub: "하지 6월 21일", N: 172 },
+    { key: "winter", name: "겨울", sub: "동지 12월 22일", N: 356 },
+  ];
+
+  // ───────── 방향 이름 ─────────
+  const DIR8 = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
+  const compass = (x, z) => DIR8[Math.round((((Math.atan2(x, -z) * 180 / Math.PI) % 360 + 360) % 360) / 45) % 8];
+
+  // ───────── 창문 상태 ─────────
+  const win = { b: -1, floor: 1, x: 0, z: 0, nx: 0, nz: 1, y: 1.5 };
+  const winY = () => (win.floor - 1) * (win.b >= 0 ? B[win.b].fh : FLOOR_H) + 1.5;
+  const winPos = () => [win.x + win.nx * 0.3, winY(), win.z + win.nz * 0.3];
+
+  // ───────── 지형(산) ─────────
+  // D.terrain.h[방위°][거리칸] = 그 칸의 가장 높은 땅 (지역 땅높이 기준 m, 곡률 반영), dists = 칸 시작 거리
+  const TR = D.terrain || null;
+  const azDegOf = (x, z) => ((Math.atan2(x, -z) * 180 / Math.PI) % 360 + 360) % 360;
+  // 눈높이 eyeH(m)에서 방위 azDeg 쪽 산의 높이각(라디안). maxDist보다 가까운 산만 봄
+  function terrainAngle(azDeg, eyeH, maxDist = Infinity) {
+    if (!TR) return -Infinity;
+    const row = TR.h[Math.round(azDeg) % 360];
+    let best = -Infinity;
+    for (let i = 0; i < row.length; i++) {
+      const end = i + 1 < TR.dists.length ? TR.dists[i + 1] : 1e9;
+      if (end > maxDist) break;
+      if (row[i] <= -999) continue;
+      const a = Math.atan2(row[i] - eyeH, TR.dists[i]);
+      if (a > best) best = a;
+    }
+    return best;
+  }
+  let hzCache = { key: "", arr: null };
+  function horizonFor(eyeH) { // 방위 0~359°의 산 높이각, 창문 높이마다 한 번만 계산
+    const key = eyeH.toFixed(1);
+    if (hzCache.key !== key) hzCache = { key, arr: Array.from({ length: 360 }, (_, a) => terrainAngle(a, eyeH)) };
+    return hzCache.arr;
+  }
+  const hzAt = (hz, s) => hz[Math.round(azDegOf(s.x, s.z)) % 360];
+
+  // 햇빛 계산: 5분 간격
+  function sunlight(N) {
+    const [px, py, pz] = winPos();
+    const hz = horizonFor(py);
+    let lit = 0, day = 0, segs = [], dayStart = null, dayEnd = null, cur = null;
+    for (let m = 4 * 60; m <= 21 * 60; m += 5) {
+      const s = sunDir(N, m / 60);
+      if (s.alt <= 0.009) { if (cur) { segs.push(cur); cur = null; } continue; }
+      day += 5;
+      if (dayStart === null) dayStart = m;
+      dayEnd = m;
+      const hl = Math.hypot(s.x, s.z) || 1;
+      const facing = (s.x * win.nx + s.z * win.nz) / hl;
+      const ok = facing > 0.06 && s.alt > hzAt(hz, s) && !blocked(px, py, pz, s.x, s.y, s.z, 1500, -1);
+      if (ok) { lit += 5; if (!cur) cur = [m, m + 5]; else cur[1] = m + 5; }
+      else if (cur) { segs.push(cur); cur = null; }
+    }
+    if (cur) segs.push(cur);
+    return { lit, day, segs, dayStart, dayEnd };
+  }
+
+  // 목표물이 보이는지
+  function lineOfSight(tx, ty, tz) {
+    const [px, py, pz] = winPos();
+    let dx = tx - px, dy = ty - py, dz = tz - pz;
+    const L = Math.hypot(dx, dy, dz);
+    dx /= L; dy /= L; dz /= L;
+    const hl = Math.hypot(dx, dz) || 1;
+    const facing = (dx * win.nx + dz * win.nz) / hl;
+    const dist = Math.hypot(tx - px, tz - pz);
+    if (facing < 0.17) return { status: "back", dist };
+    const hit = blocked(px, py, pz, dx, dy, dz, L, -1);
+    if (hit) return { status: "blocked", dist, hit, at: hit.t };
+    if (TR && terrainAngle(azDegOf(tx - px, tz - pz), py, dist - 150) > Math.atan2(ty - py, dist)) return { status: "terrain", dist };
+    return { status: "ok", dist };
+  }
+
+  // 창밖 트인 정도: 창문 정면 ±75° 31방향, 수평 시선
+  function openness() {
+    const [px, py, pz] = winPos();
+    const base = Math.atan2(win.nx, win.nz);
+    const out = [];
+    for (let i = 0; i < 31; i++) {
+      const a = base + ((i - 15) / 15) * (75 * Math.PI / 180);
+      const dx = Math.sin(a), dz = Math.cos(a);
+      const hit = blocked(px, py, pz, dx, 0, dz, 400, -1);
+      out.push(hit ? hit.t : 400);
+    }
+    return out;
+  }
+
+  // ───────── 3D 장면 ─────────
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0xe9edf2);
+  renderer.shadowMap.enabled = MODE === "sun";
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xe9edf2, 380, 1100);
+  const camera = new THREE.PerspectiveCamera(40, 1, 1, 6000);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xa8b0bb, 0.75);
+  scene.add(hemi);
+  const sunLight = new THREE.DirectionalLight(0xfff4e2, MODE === "sun" ? 0.75 : 0.45);
+  sunLight.position.set(-150, 260, 120);
+  sunLight.castShadow = MODE === "sun";
+  sunLight.shadow.mapSize.set(2048, 2048);
+  Object.assign(sunLight.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 10, far: 1500 });
+  sunLight.shadow.bias = -0.0008;
+  scene.add(sunLight, sunLight.target);
+
+  function merge(list, normals = true) {
+    let n = 0;
+    const flat = list.map((g) => { const x = g.index ? g.toNonIndexed() : g; n += x.attributes.position.count; return x; });
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+    let o = 0;
+    flat.forEach((g) => { pos.set(g.attributes.position.array, o * 3); if (normals && g.attributes.normal) nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; });
+    const out = new THREE.BufferGeometry();
+    out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    if (normals) out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    return out;
+  }
+
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(R + 60, 96), new THREE.MeshLambertMaterial({ color: 0xe3e7ec }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  const outer = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshBasicMaterial({ color: 0xe9edf2 }));
+  outer.rotation.x = -Math.PI / 2; outer.position.y = -0.2;
+  scene.add(outer);
+
+  const carG = [], footG = [];
+  D.roads.forEach(([w, foot, ax, az, bx, bz]) => {
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.1) return;
+    const g = new THREE.PlaneGeometry(w, len);
+    g.rotateX(-Math.PI / 2); g.rotateY(Math.atan2(bx - ax, bz - az)); g.translate((ax + bx) / 2, 0, (az + bz) / 2);
+    (foot ? footG : carG).push(g);
+    [[ax, az], [bx, bz]].forEach(([x, z]) => { const c = new THREE.CircleGeometry(w / 2, 12); c.rotateX(-Math.PI / 2); c.translate(x, 0, z); (foot ? footG : carG).push(c); });
+  });
+  const roadMesh = new THREE.Mesh(merge(carG), new THREE.MeshLambertMaterial({ color: 0xb3bac5, polygonOffset: true, polygonOffsetFactor: -1 }));
+  const footMesh = new THREE.Mesh(merge(footG), new THREE.MeshLambertMaterial({ color: 0xd3d8df, polygonOffset: true, polygonOffsetFactor: -1 }));
+  roadMesh.position.y = footMesh.position.y = 0.05;
+  roadMesh.receiveShadow = footMesh.receiveShadow = true;
+  scene.add(footMesh, roadMesh);
+
+  // 건물 (삼각형 → 건물 번호를 알 수 있게 범위 기록)
+  const bGeos = [], eGeos = [], triStart = [];
+  let triCount = 0;
+  B.forEach((b) => {
+    const sh = new THREE.Shape();
+    b.pts.slice(0, -1).forEach((q, i) => (i ? sh.lineTo(q[0], -q[1]) : sh.moveTo(q[0], -q[1])));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: b.h, bevelEnabled: false }).toNonIndexed();
+    g.rotateX(-Math.PI / 2);
+    triStart.push(triCount);
+    triCount += g.attributes.position.count / 3;
+    bGeos.push(g);
+    eGeos.push(new THREE.EdgesGeometry(g, 30));
+  });
+  const bMesh = new THREE.Mesh(merge(bGeos), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  bMesh.castShadow = bMesh.receiveShadow = true;
+  scene.add(bMesh, new THREE.LineSegments(merge(eGeos, false), new THREE.LineBasicMaterial({ color: 0xc8ced7 })));
+  function buildingOfTri(ti) {
+    let lo = 0, hi = triStart.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (triStart[mid] <= ti) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+
+  // 고른 건물 강조 + 창문 표시
+  const selMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0.12, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  selMesh.castShadow = selMesh.receiveShadow = true;
+  scene.add(selMesh);
+  const winMark = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.8), new THREE.MeshBasicMaterial({ color: new THREE.Color(ACCENT), side: THREE.DoubleSide }));
+  scene.add(winMark);
+  const winRing = new THREE.Mesh(new THREE.RingGeometry(1.7, 2.3, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(ACCENT), transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+  scene.add(winRing);
+
+  // 모드별 표시물
+  const rayGroup = new THREE.Group();
+  scene.add(rayGroup);
+  const labelEls = [];
+  function clearRays() {
+    rayGroup.children.slice().forEach((c) => { c.geometry.dispose(); rayGroup.remove(c); });
+    labelEls.forEach((l) => l.el.remove());
+    labelEls.length = 0;
+  }
+  function addLine(a, b, color, dashed) {
+    const av = new THREE.Vector3(...a);
+    const bv = new THREE.Vector3(...b);
+    const dir = new THREE.Vector3().subVectors(bv, av);
+    const len = dir.length();
+    if (len < 0.01) return null;
+    const r = dashed ? 0.5 : 1.4;
+    const geo = new THREE.CylinderGeometry(r, r, len, 6);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: dashed, opacity: dashed ? 0.45 : 1.0 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(new THREE.Vector3().addVectors(av, bv).multiplyScalar(0.5));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    rayGroup.add(mesh);
+    return mesh;
+  }
+  function addLabel(text, pos, cls) {
+    const el = document.createElement("div");
+    el.className = "tlabel " + (cls || "");
+    el.textContent = text;
+    stage.appendChild(el);
+    labelEls.push({ el, pos: new THREE.Vector3(...pos) });
+  }
+
+  // ───────── 카메라 ─────────
+  const cam = { yaw: 0, pitch: 0.55, dist: 150, target: new THREE.Vector3() };
+  function placeCamera() {
+    const cp = Math.cos(cam.pitch);
+    camera.position.set(
+      cam.target.x + Math.sin(cam.yaw) * cp * cam.dist,
+      cam.target.y + Math.sin(cam.pitch) * cam.dist,
+      cam.target.z + Math.cos(cam.yaw) * cp * cam.dist
+    );
+    camera.lookAt(cam.target);
+  }
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+  document.getElementById("zoomIn").addEventListener("click", () => { cam.dist = Math.max(40, cam.dist * 0.8); placeCamera(); });
+  document.getElementById("zoomOut").addEventListener("click", () => { cam.dist = Math.min(700, cam.dist * 1.25); placeCamera(); });
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = Math.min(700, Math.max(40, cam.dist * (e.deltaY > 0 ? 1.1 : 0.9))); placeCamera(); }, { passive: false });
+
+  // 끌기 = 회전, 짧게 누르기 = 창문 고르기
+  let drag = null;
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".zoom, .tools")) return;
+    drag = { x: e.clientX, y: e.clientY, yaw: cam.yaw, pitch: cam.pitch, moved: false };
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 5) drag.moved = true;
+    if (!drag.moved) return;
+    cam.yaw = drag.yaw - dx * 0.008;
+    cam.pitch = Math.min(1.45, Math.max(0.12, drag.pitch + dy * 0.006));
+    placeCamera();
+  });
+  stage.addEventListener("pointerup", (e) => {
+    if (drag && !drag.moved) pick(e);
+    drag = null;
+  });
+  stage.addEventListener("pointercancel", () => { drag = null; });
+
+  const ray = new THREE.Raycaster();
+  function pick(e) {
+    const r = stage.getBoundingClientRect();
+    ray.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
+    const hit = ray.intersectObject(bMesh)[0];
+    if (!hit || Math.abs(hit.face.normal.y) > 0.3) return;
+    const bi = buildingOfTri(hit.faceIndex);
+    const n = hit.face.normal;
+    const L = Math.hypot(n.x, n.z) || 1;
+    const floor = Math.min(B[bi].fl, Math.max(1, Math.floor(hit.point.y / B[bi].fh) + 1));
+    setWindow(bi, hit.point.x, hit.point.z, n.x / L, n.z / L, floor, false);
+  }
+
+  // ───────── 창문 정하기 ─────────
+  function setWindow(bi, x, z, nx, nz, floor, moveCam) {
+    Object.assign(win, { b: bi, x, z, nx, nz, floor });
+    document.getElementById("hint").textContent = "다른 건물 벽을 누르면 창문을 바꿀 수 있어요";
+    // 강조 건물
+    const b = B[bi];
+    const sh = new THREE.Shape();
+    b.pts.slice(0, -1).forEach((q, i) => (i ? sh.lineTo(q[0], -q[1]) : sh.moveTo(q[0], -q[1])));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: b.h + 0.02, bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    selMesh.geometry.dispose();
+    selMesh.geometry = g;
+    cam.target.set(x, winY(), z);
+    if (moveCam) cam.yaw = Math.atan2(nx, nz) + 0.55;
+    placeCamera();
+    update();
+  }
+
+  function placeWinMark() {
+    const y = winY();
+    winMark.position.set(win.x + win.nx * 0.15, y, win.z + win.nz * 0.15);
+    winMark.rotation.set(0, Math.atan2(win.nx, win.nz), 0);
+    winRing.position.copy(winMark.position).addScaledVector(new THREE.Vector3(win.nx, 0, win.nz), 0.05);
+    winRing.rotation.copy(winMark.rotation);
+  }
+
+  const floorVal = document.getElementById("floorVal");
+  document.getElementById("floorDown").addEventListener("click", () => { if (win.floor > 1) { win.floor--; update(); } });
+  document.getElementById("floorUp").addEventListener("click", () => { if (win.b >= 0 && win.floor < B[win.b].fl) { win.floor++; update(); } });
+
+  const fmtHM = (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? (m ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`; };
+  const fmtClock = (min) => { const t = Math.round(min), h = Math.floor(t / 60) % 24, m = t % 60; return `${h}:${String(m).padStart(2, "0")}`; };
+  const fmtDist = (d) => (d >= 1000 ? (d / 1000).toFixed(1) + "km" : Math.round(d) + "m");
+
+  // ───────── 갱신 ─────────
+  const panel = document.getElementById("modePanel");
+  function update() {
+    placeWinMark();
+    floorVal.textContent = win.floor + "층";
+    document.getElementById("floorDown").disabled = win.floor <= 1;
+    document.getElementById("floorUp").disabled = win.floor >= B[win.b].fl;
+    document.getElementById("selText").innerHTML =
+      `${win.floor}층 · ${compass(win.nx, win.nz)}향 창문<small>${B[win.b].fl}층 건물${B[win.b].est ? " · 높이는 층수로 추정" : ""}</small>`;
+    clearRays();
+    if (MODE === "sun") updateSun(); else updateView();
+  }
+
+  // ── 햇빛 모드 ──
+  const preview = { season: "today", hour: 14 };
+  function updateSun() {
+    const res = SEASONS.map((s) => ({ s, r: sunlight(s.N) }));
+    const today = res[0].r, winter = res[3].r, summer = res[2].r;
+    const span = [5 * 60, 20 * 60], W = span[1] - span[0];
+    const pct = (m) => ((Math.min(span[1], Math.max(span[0], m)) - span[0]) / W) * 100;
+    const rows = res.map(({ s, r }) => `
+      <div class="srow">
+        <div class="name">${s.name}<small>${s.sub}</small></div>
+        <div class="track" role="img" aria-label="${s.name} 햇빛 드는 시간 ${fmtHM(r.lit)}">
+          <span class="day" style="left:${pct(r.dayStart)}%;width:${pct(r.dayEnd + 5) - pct(r.dayStart)}%"></span>
+          ${r.segs.map(([a, b]) => `<span class="lit" style="left:${pct(a)}%;width:${pct(b) - pct(a)}%"></span>`).join("")}
+        </div>
+        <div class="val">${fmtHM(r.lit)}</div>
+      </div>`).join("");
+    const axis = [6, 9, 12, 15, 18].map((h) => `<span style="left:${pct(h * 60)}%">${h}시</span>`).join("");
+
+    let verdict;
+    if (winter.lit === 0) verdict = `<b>겨울엔 직사광선이 거의 들지 않아요.</b> 해가 낮게 뜨는 계절이라 앞 건물이나 방향 때문에 가려져요.`;
+    else if (winter.lit < 120) verdict = `<b>겨울엔 하루 ${fmtHM(winter.lit)}만 해가 들어요.</b> ${winter.segs.map(([a, b]) => `${fmtClock(a)}~${fmtClock(b)}`).join(", ")} 사이예요.`;
+    else verdict = `<b>겨울에도 하루 ${fmtHM(winter.lit)} 해가 들어요.</b> 채광이 좋은 편이에요.`;
+    if (summer.lit > 0 && winter.lit > 0 && summer.lit < winter.lit) verdict += ` 여름엔 해가 높이 떠서 오히려 덜 들어와요.`;
+
+    panel.innerHTML = `
+      <div class="big"><b>${fmtHM(today.lit)}</b><span>오늘 이 창문에 해가 드는 시간</span></div>
+      <div class="verdict">${verdict}</div>
+      <div class="group" style="display:flex;flex-direction:column;gap:6px">
+        <span class="label">계절별 햇빛 드는 시간</span>
+        <div class="seasons">${rows}</div>
+        <div class="axis">${axis}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="label">3D로 그림자 보기</span>
+        <div class="chips" id="pvSeason">${SEASONS.map((s) => `<button type="button" id="pv-${s.key}" data-k="${s.key}" aria-pressed="${s.key === preview.season}">${s.name}</button>`).join("")}</div>
+        <div class="time-row"><input type="range" id="pvHour" min="5" max="20" step="0.25" value="${preview.hour}" aria-label="미리보기 시각"><span id="pvHourVal"></span></div>
+      </div>`;
+    document.getElementById("pvSeason").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      preview.season = b.dataset.k;
+      document.querySelectorAll("#pvSeason button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      applyPreview();
+    });
+    document.getElementById("pvHour").addEventListener("input", (e) => { preview.hour = Number(e.target.value); applyPreview(); });
+    applyPreview();
+  }
+  function applyPreview() {
+    const N = SEASONS.find((s) => s.key === preview.season).N;
+    const s = sunDir(N, preview.hour);
+    const [px, py, pz] = winPos();
+    const up = s.alt > 0.005;
+    const hl = Math.hypot(s.x, s.z) || 1;
+    const facing = (s.x * win.nx + s.z * win.nz) / hl;
+    const hit = up && facing > 0.06 ? blocked(px, py, pz, s.x, s.y, s.z, 1500, -1) : null;
+    const behindHill = up && s.alt <= hzAt(horizonFor(py), s);
+    const lit = up && facing > 0.06 && !hit && !behindHill;
+    clearRays();
+    if (up) {
+      sunLight.position.set(cam.target.x + s.x * 600, s.y * 600, cam.target.z + s.z * 600);
+      sunLight.target.position.copy(cam.target);
+      sunLight.intensity = 0.25 + 0.65 * Math.min(1, s.alt / 0.35);
+      sunLight.castShadow = true;
+      const end = [px + s.x * (hit ? hit.t : 90), py + s.y * (hit ? hit.t : 90), pz + s.z * (hit ? hit.t : 90)];
+      if (facing > 0.06) addLine([px, py, pz], end, lit ? 0xf59e0b : 0xc2410c, !lit);
+    } else {
+      sunLight.intensity = 0.1;
+      sunLight.castShadow = false;
+    }
+    winMark.material.color.set(lit ? 0xf59e0b : new THREE.Color(ACCENT).multiplyScalar(0.6));
+    const label = !up ? "해가 진 시각" : facing <= 0.06 ? "해가 창문 뒤쪽" : lit ? "지금 해가 들어요" : behindHill && !hit ? "산에 가려요" : "앞 건물에 가려요";
+    document.getElementById("pvHourVal").textContent = fmtClock(preview.hour * 60);
+    addLabel(label, [px, py + 3, pz], lit ? "ok" : "bad");
+  }
+
+  // ── 뷰 모드 ──
+  function sunriseSunset(N) {
+    const hz = horizonFor(winY());
+    // 산이 없으면 0°, 있으면 능선 높이각. -0.833°(굴절 + 해 반지름)만큼 먼저 보임
+    const gap = (s) => s.alt - (Math.max(0, hzAt(hz, s)) + HORIZON);
+    let rise = null, set = null, prev = gap(sunDir(N, 3));
+    for (let m = 3 * 60 + 1; m <= 22 * 60; m++) {
+      const a = gap(sunDir(N, m / 60));
+      if (prev <= 0 && a > 0 && rise === null) rise = m - 1 + -prev / (a - prev);
+      if (prev > 0 && a <= 0) set = m - 1 + prev / (prev - a);
+      prev = a;
+    }
+    return { rise, set };
+  }
+  function updateView() {
+    const [px, py, pz] = winPos();
+    const items = D.targets.map((t) => ({ ...t, r: lineOfSight(t.x, t.y, t.z) }));
+    const { rise, set } = sunriseSunset(TODAY_N);
+    [[rise, "오늘 해돋이"], [set, "오늘 해넘이"]].forEach(([m, name]) => {
+      if (m === null) return;
+      const s = sunDir(TODAY_N, m / 60);
+      const up = Math.max(Math.PI / 180, Math.max(0, hzAt(horizonFor(py), s)) + 0.005); // 능선 바로 위
+      const tx = px + s.x * 1500, tz = pz + s.z * 1500, ty = py + 1500 * Math.tan(up);
+      items.push({ name, x: tx, y: ty, z: tz, kind: "sun", time: m, r: lineOfSight(tx, ty, tz) });
+    });
+
+    // 3D 표시
+    items.forEach((t) => {
+      const d = Math.hypot(t.x - px, t.y - py, t.z - pz);
+      const show = Math.min(d, 260);
+      const dir = [(t.x - px) / d, (t.y - py) / d, (t.z - pz) / d];
+      const far = [px + dir[0] * show, py + dir[1] * show, pz + dir[2] * show];
+      if (t.r.status === "ok") addLine([px, py, pz], far, 0x1f8a4c, false);
+      else if (t.r.status === "terrain") addLine([px, py, pz], far, 0xc2410c, true);
+      else if (t.r.status === "blocked") {
+        const at = t.r.at;
+        const hitP = [px + dir[0] * at, py + dir[1] * at, pz + dir[2] * at];
+        addLine([px, py, pz], hitP, 0xc2410c, false);
+        addLine(hitP, far, 0x9aa3af, true);
+      }
+      if (t.r.status !== "back") addLabel(t.name.replace(" (예시 지점)", ""), far, t.r.status === "ok" ? "ok" : "bad");
+    });
+
+    // 트인 정도
+    const op = openness();
+    const front = op[15];
+    const shade = (d) => {
+      const t = Math.min(1, d / 120);
+      return `color-mix(in srgb, var(--ok) ${Math.round(18 + 70 * t)}%, var(--mute-soft))`;
+    };
+    const strip = op.map((d) => `<i style="background:${shade(d)}" title="${Math.round(d)}m"></i>`).join("");
+    const frontText = front >= 400 ? "정면이 시원하게 트여 있어요" : `정면 앞 건물까지 ${Math.round(front)}m`;
+    const openCount = op.filter((d) => d >= 60).length;
+
+    const rows = items.map((t) => {
+      const dir = compass(t.x - px, t.z - pz);
+      const meta = t.kind === "sun"
+        ? `${fmtClock(t.time)} · ${dir}쪽 · ${TR ? "산 위로 보이는 시각" : "산이 없는 지평선 기준"}`
+        : `${fmtDist(t.r.dist)} · ${dir}쪽${t.approx ? " · 대략 위치" : ""}`;
+      let chip;
+      if (t.r.status === "ok") chip = `<span class="chip ok">${t.kind === "sun" ? "건물엔 안 가려요" : "보여요"}</span>`;
+      else if (t.r.status === "blocked") chip = `<span class="chip bad">${B[t.r.hit.b].fl}층 건물에 가려요</span>`;
+      else if (t.r.status === "terrain") chip = `<span class="chip bad">산에 가려요</span>`;
+      else chip = `<span class="chip mute">창문 반대쪽</span>`;
+      return `<div class="trow"><div class="tn">${t.name}</div>${chip}<div class="tm">${meta}</div></div>`;
+    }).join("");
+
+    const visible = items.filter((t) => t.r.status === "ok").length;
+    panel.innerHTML = `
+      <div class="big"><b>${visible}곳</b><span>이 창문에서 보이는 곳 (${items.length}곳 중)</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="label">창밖이 트인 정도</span>
+        <div style="font-size:14.5px;font-weight:600">${frontText}</div>
+        <div class="open-strip" role="img" aria-label="창문 정면 좌우 150도 중 60m 이상 트인 방향 ${openCount}/31">${strip}</div>
+        <div class="open-legend"><span>왼쪽 75°</span><span>정면</span><span>오른쪽 75°</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span class="label">보이는지 확인한 곳</span>
+        <div class="tlist">${rows}</div>
+      </div>`;
+  }
+
+  // ───────── 첫 화면: 보여주기 좋은 창문 자동 선택 ─────────
+  function candidates() {
+    const out = [];
+    B.forEach((b, bi) => {
+      const cx = (b.minx + b.maxx) / 2, cz = (b.minz + b.maxz) / 2;
+      if (Math.hypot(cx, cz) > 140 || b.fl < 3) return;
+      for (let k = 0; k < b.pts.length - 1; k++) {
+        const [ax, az] = b.pts[k], [bx, bz] = b.pts[k + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 6) continue;
+        out.push({ bi, x: (ax + bx) / 2, z: (az + bz) / 2, nx: (bz - az) / L, nz: -(bx - ax) / L, d: Math.hypot(cx, cz) });
+      }
+    });
+    return out.sort((a, b) => a.d - b.d).slice(0, 140);
+  }
+  function chooseDefault() {
+    let best = null;
+    for (const c of candidates()) {
+      Object.assign(win, { b: c.bi, x: c.x, z: c.z, nx: c.nx, nz: c.nz });
+      let score;
+      if (MODE === "sun") {
+        if (c.nz < 0.5) continue; // 남쪽을 보는 창
+        win.floor = 2;
+        const w = sunlight(356).lit, t = sunlight(TODAY_N).lit;
+        score = -Math.abs(w - 100) + (t > w ? 30 : 0);
+      } else {
+        win.floor = B[c.bi].fl;
+        const vis = D.targets.map((t) => lineOfSight(t.x, t.y, t.z).status);
+        if (vis[0] !== "ok") continue; // 불꽃은 보이는 창
+        const ok = vis.filter((s) => s === "ok").length, bad = vis.filter((s) => s === "blocked").length;
+        score = ok * 10 + bad * 6 - c.d * 0.05;
+        win.floor = Math.max(1, B[c.bi].fl - 1);
+      }
+      if (!best || score > best.score) best = { ...c, floor: win.floor, score };
+    }
+    if (!best) { const c = candidates()[0]; best = { ...c, floor: 2 }; }
+    setWindow(best.bi, best.x, best.z, best.nx, best.nz, best.floor, true);
+  }
+
+  const setNote = () => document.getElementById("note").textContent = MODE === "sun"
+    ? `창문에 직사광선이 닿는 시간을 계산했어요. 날씨, 커튼, 유리, 반사광은 반영하지 않았어요. 건물은 ${D.label || ""} 일대 반경 ${Math.round(R)}m 안 ${B.length}채를 국토교통부 GIS건물통합정보의 높이로 세웠고(높이 값이 없으면 층수로 추정), 그보다 먼 건물은 빠지고 산은 지형 데이터(30km까지)로 반영했어요. 해의 위치는 대전의 실제 값이에요.`
+    : `창문에서 각 장소까지 시선이 건물에 걸리는지 계산했어요. 불꽃 지점은 예시이고, '대략 위치'라고 표시한 곳은 위치와 높이를 어림잡았어요. 건물은 국토교통부 GIS건물통합정보의 높이를 썼고(값이 없으면 층수로 추정), 반경 ${Math.round(R)}m 밖 건물은 빠지고, 산은 지형 데이터(30km까지)로 반영했어요. 해돋이·해넘이는 산 능선 위로 해가 처음 보이고 마지막으로 사라지는 시각이에요. 지형: Copernicus DEM (© DLR, © Airbus, EU·ESA 제공).`;
+
+  setNote();
+
+  // ───────── 그리기 ─────────
+  const v = new THREE.Vector3();
+  function frame() {
+    renderer.render(scene, camera);
+    const w = stage.clientWidth, h = stage.clientHeight;
+    labelEls.forEach(({ el, pos }) => {
+      v.copy(pos).project(camera);
+      const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+      el.hidden = !vis;
+      if (vis) {
+        el.style.left = Math.max(60, Math.min(w - 60, ((v.x + 1) / 2) * w)) + "px";
+        el.style.top  = Math.max(38, Math.min(h - 20, ((1 - v.y) / 2) * h)) + "px";
+      }
+    });
+    requestAnimationFrame(frame);
+  }
+  resize();
+  chooseDefault();
+  if (MODE === "view") { cam.dist = 230; cam.pitch = 0.42; placeCamera(); }
+
+  // ═════════ 앱(안드로이드)과 연결 ═════════
+  // Kotlin 쪽 MainActivity가 window.Android 로 함수를 넣어 주고,
+  // 결과는 window.onNativeLocation / onNativeHeading 으로 돌려줘요.
+  const native = window.Android || null;
+  const hintEl = document.getElementById("hint");
+  if (native) document.getElementById("tools").hidden = false;
+
+  // ── 먼 산 능선을 3D 배경으로 (지형 데이터가 있을 때) ──
+  if (D.terrain) {
+    const RING = 2200, eye = 1.5, pos = [], idx = [];
+    for (let a = 0; a <= 360; a++) {
+      const ang = Math.max(0, terrainAngle(a % 360, eye));
+      const r = a * Math.PI / 180, x = Math.sin(r) * RING, z = -Math.cos(r) * RING;
+      pos.push(x, -2, z, x, Math.tan(ang) * RING, z);
+      if (a < 360) { const k = a * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    const ridge = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc3cec7, side: THREE.DoubleSide, fog: false }));
+    ridge.renderOrder = -1;
+    scene.add(ridge);
+  }
+
+  // ── 모드 전환 (창밖 뷰 ↔ 햇빛 시간) ──
+  document.getElementById("modeTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || b.dataset.mode === MODE) return;
+    MODE = b.dataset.mode;
+    document.querySelectorAll("#modeTabs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    if (MODE === "view") { sunLight.intensity = 0.45; sunLight.castShadow = false; }
+    setNote();
+    update();
+  });
+
+  // ── 위도·경도 → 화면 좌표 (x = 동쪽 m, z = 남쪽 m) ──
+  const KX = Math.cos(D.lat * Math.PI / 180) * 111320, KZ = 110540;
+  const toLocal = (lat, lon) => [(lon - D.lon) * KX, -(lat - D.lat) * KZ];
+
+  const meDot = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 2.2, 0.6, 24),
+    new THREE.MeshBasicMaterial({ color: 0x2563eb })
+  );
+  meDot.visible = false;
+  scene.add(meDot);
+
+  function insidePoly(x, z, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 2; i < pts.length - 1; j = i++) {
+      const [xi, zi] = pts[i], [xj, zj] = pts[j];
+      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // 가장 알맞은 벽 찾기: 건물 안이면 그 건물에서 지금 보고 있는 방향의 벽, 밖이면 가장 가까운 벽
+  function pickWall(x, z, headingDeg) {
+    const inside = B.findIndex((b) => x >= b.minx && x <= b.maxx && z >= b.minz && z <= b.maxz && insidePoly(x, z, b.pts));
+    const hx = headingDeg == null ? 0 : Math.sin(headingDeg * Math.PI / 180);
+    const hz = headingDeg == null ? 0 : -Math.cos(headingDeg * Math.PI / 180);
+    let best = null;
+    B.forEach((b, bi) => {
+      if (inside >= 0 && bi !== inside) return;
+      if (inside < 0 && (x < b.minx - 60 || x > b.maxx + 60 || z < b.minz - 60 || z > b.maxz + 60)) return;
+      for (let k = 0; k < b.pts.length - 1; k++) {
+        const [ax, az] = b.pts[k], [bx, bz] = b.pts[k + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 2) continue;
+        const t = Math.min(0.9, Math.max(0.1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / (L * L)));
+        const px = ax + (bx - ax) * t, pz = az + (bz - az) * t;
+        const nx = (bz - az) / L, nz = -(bx - ax) / L; // 바깥쪽 법선
+        const dist = Math.hypot(px - x, pz - z);
+        // 건물 안: 바라보는 방향과 벽 법선이 잘 맞을수록 좋음 / 밖: 가까울수록 좋음
+        const score = inside >= 0 && headingDeg != null ? -(nx * hx + nz * hz) * 100 + dist * 0.2 : dist;
+        if (!best || score < best.score) best = { bi, x: px, z: pz, nx, nz, score };
+      }
+    });
+    return best ? { ...best, inside: inside >= 0 } : null;
+  }
+
+  let heading = null, follow = false;
+
+  // ── 지역: 앱에 들어 있는 지역(data/regions.json) 중 지금 보는 곳 ──
+  document.querySelector(".eyebrow").textContent = D.label || "";
+  const regions = window.REGIONS || [];
+  const regionAt = (lat, lon) => regions.find((g) =>
+    Math.hypot((lon - g.lon) * Math.cos(g.lat * Math.PI / 180) * 111320, (lat - g.lat) * 110540) <= g.R);
+
+  window.onNativeLocation = (lat, lon, acc) => {
+    const [x, z] = toLocal(lat, lon);
+    if (Math.hypot(x, z) > R) {
+      const params = `lat=${lat}&lon=${lon}&acc=${acc}&f=${follow ? 1 : 0}`;
+      const tId = `${Math.floor(lat / TILE_DEG)}_${Math.floor(lon / TILE_DEG)}`;
+      const fallback = () => {
+        const other = regionAt(lat, lon);
+        if (other) { location.replace(`index.html?r=${other.id}&${params}`); return; }
+        hintEl.textContent = `지금 위치는 앱에 들어 있는 지역(${regions.map((g) => g.label).join(", ")}) 밖이에요`;
+      };
+      fetch(`data/tiles/${tId}.json`)
+        .then(r => r.ok ? location.replace(`index.html?tile=${tId}&${params}`) : fallback())
+        .catch(fallback);
+      return;
+    }
+    meDot.position.set(x, 0.4, z);
+    meDot.visible = true;
+    const w = pickWall(x, z, heading);
+    if (!w) { hintEl.textContent = "근처에 건물이 없어요"; return; }
+    const floor = Math.min(Math.max(1, win.floor), B[w.bi].fl);
+    setWindow(w.bi, w.x, w.z, w.nx, w.nz, floor, true);
+    hintEl.textContent = w.inside
+      ? `지금 있는 건물의 ${heading == null ? "가까운" : "바라보는 쪽"} 창문이에요 · 오차 약 ${Math.round(acc)}m`
+      : `내 위치에서 가장 가까운 벽이에요 · 오차 약 ${Math.round(acc)}m`;
+  };
+  window.onNativeLocationError = (why) => {
+    hintEl.textContent = why === "permission" ? "위치 권한이 없어서 내 위치를 못 찾았어요" : "위치를 찾지 못했어요. 잠시 뒤 다시 눌러 주세요";
+  };
+  window.onNativeHeading = (deg) => {
+    heading = deg;
+    if (!follow) return;
+    cam.yaw = -deg * Math.PI / 180; // 카메라가 휴대폰이 향한 방향을 보도록
+    placeCamera();
+  };
+
+  document.getElementById("btnLocate").addEventListener("click", () => {
+    hintEl.textContent = "내 위치를 찾는 중…";
+    native.requestLocation();
+  });
+  const btnCompass = document.getElementById("btnCompass");
+  btnCompass.addEventListener("click", () => {
+    follow = !follow;
+    btnCompass.setAttribute("aria-pressed", String(follow));
+    if (follow) native.startCompass(); else native.stopCompass();
+    hintEl.textContent = follow ? "휴대폰을 돌리면 화면도 같이 돌아가요" : "나침반을 껐어요";
+  });
+
+  // ── 공유 카드: 3D 화면 + 결과 요약을 1080×1350 이미지로 ──
+  function fitText(g, text, maxW) {
+    if (g.measureText(text).width <= maxW) return text;
+    while (text.length > 1 && g.measureText(text + "…").width > maxW) text = text.slice(0, -1);
+    return text + "…";
+  }
+  function shareCard() {
+    renderer.render(scene, camera); // 같은 순간에 읽어야 빈 화면이 안 나와요
+    const src = renderer.domElement;
+    const W = 1080, H = 1350, IH = 860;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, W, H);
+
+    // 3D 화면을 위쪽에 가운데 맞춰 자르기
+    const s = Math.max(W / src.width, IH / src.height);
+    const sw = W / s, sh = IH / s, sx = (src.width - sw) / 2, sy = (src.height - sh) / 2;
+    g.drawImage(src, sx, sy, sw, sh, 0, 0, W, IH);
+
+    // 3D 위 이름표(HTML)도 그려 넣기
+    const ratio = src.width / stage.clientWidth;
+    g.font = "600 30px sans-serif";
+    g.textAlign = "center";
+    labelEls.forEach(({ el }) => {
+      if (el.hidden) return;
+      const lx = (parseFloat(el.style.left) * ratio - sx) * s;
+      const ly = (parseFloat(el.style.top) * ratio - sy) * s - 34;
+      if (lx < 0 || lx > W || ly < 20 || ly > IH) return;
+      const tw = g.measureText(el.textContent).width + 28;
+      g.fillStyle = "rgba(255,255,255,0.94)";
+      g.fillRect(lx - tw / 2, ly - 30, tw, 44);
+      g.fillStyle = el.classList.contains("ok") ? "#1f8a4c" : el.classList.contains("bad") ? "#c2410c" : "#151a23";
+      g.fillRect(lx - tw / 2, ly - 30, 6, 44);
+      g.fillStyle = "#151a23";
+      g.fillText(el.textContent, lx, ly + 2);
+    });
+
+    // 아래쪽 요약
+    g.textAlign = "left";
+    const pad = 64;
+    let y = IH + 78;
+    const sel = document.getElementById("selText").firstChild.textContent.trim();
+    g.fillStyle = "#2563eb";
+    g.font = "700 30px sans-serif";
+    g.fillText(fitText(g, sel, W - pad * 2), pad, y);
+    y += 74;
+    const big = panel.querySelector(".big");
+    g.fillStyle = "#151a23";
+    g.font = "700 64px sans-serif";
+    const bigNum = big ? big.querySelector("b").textContent : "";
+    g.fillText(bigNum, pad, y);
+    const numW = g.measureText(bigNum).width;
+    g.font = "500 32px sans-serif";
+    g.fillStyle = "#5d6777";
+    g.fillText(fitText(g, big ? big.querySelector("span").textContent : "", W - pad * 2 - numW - 20), pad + numW + 20, y);
+    y += 70;
+    g.font = "500 34px sans-serif";
+    g.fillStyle = "#151a23";
+    const lines = MODE === "view"
+      ? [...panel.querySelectorAll(".trow")].filter((r) => r.querySelector(".chip.ok")).slice(0, 3).map((r) => "✓ " + r.querySelector(".tn").textContent)
+      : [fitText(g, panel.querySelector(".verdict b")?.textContent || "", W - pad * 2)];
+    lines.forEach((t) => { g.fillText(fitText(g, t, W - pad * 2), pad, y); y += 52; });
+
+    g.font = "400 24px sans-serif";
+    g.fillStyle = "#8a93a3";
+    g.fillText("창밖 뷰 계산기 · 건물: 국토교통부 GIS건물통합정보 · © OpenStreetMap contributors", pad, H - 48);
+    if (D.terrain) g.fillText("지형: Copernicus DEM (© DLR, © Airbus Defence and Space, EU·ESA 제공)", pad, H - 84);
+
+    const b64 = c.toDataURL("image/png").split(",")[1];
+    native.shareImage(b64, `${sel} · ${bigNum} ${big ? big.querySelector("span").textContent : ""}`.trim());
+  }
+  document.getElementById("btnShare").addEventListener("click", shareCard);
+
+  // 다른 지역에서 넘어왔으면 위치·나침반 상태 이어 받기
+  const qp = new URLSearchParams(location.search);
+  if (qp.get("f") === "1") { follow = true; btnCompass.setAttribute("aria-pressed", "true"); }
+  if (qp.get("lat")) setTimeout(() => window.onNativeLocation(+qp.get("lat"), +qp.get("lon"), +qp.get("acc")), 0);
+  window.__shareCard = shareCard; // 테스트용
+
+  // ── 건물 검색 ──
+  const searchNames = D.names || [];
+  const searchOverlay = document.getElementById("searchOverlay");
+  const searchInput   = document.getElementById("searchInput");
+  const searchList    = document.getElementById("searchList");
+
+  function runSearch(q) {
+    const qq = q.trim();
+    const hits = qq
+      ? searchNames.filter(n => n[2].includes(qq)).slice(0, 50)
+      : searchNames.slice(0, 50);
+    if (!hits.length) {
+      searchList.innerHTML = `<div class="search-empty">${qq ? "결과 없어요" : "건물 이름 데이터가 없어요"}</div>`;
+      return;
+    }
+    searchList.innerHTML = hits.map((n, i) => {
+      const dist = Math.round(Math.hypot(n[0] - win.x, n[1] - win.z));
+      return `<button class="sresult" data-i="${i}" type="button"><div class="sresult-name">${n[2]}</div><div class="sresult-dist">${dist}m</div></button>`;
+    }).join("");
+    searchList.querySelectorAll(".sresult").forEach((el, i) => {
+      el.addEventListener("click", () => {
+        const w = pickWall(hits[i][0], hits[i][1], null);
+        if (w) setWindow(w.bi, w.x, w.z, w.nx, w.nz, win.floor, true);
+        searchOverlay.hidden = true;
+        searchInput.value = "";
+      });
+    });
+  }
+
+  document.getElementById("btnSearch").addEventListener("click", () => {
+    searchOverlay.hidden = false;
+    searchInput.focus();
+    runSearch("");
+  });
+  document.getElementById("searchClose").addEventListener("click", () => {
+    searchOverlay.hidden = true;
+    searchInput.value = "";
+  });
+  searchInput.addEventListener("input", () => runSearch(searchInput.value));
+
+  requestAnimationFrame(frame);
+}
+
+const PARAMS = new URLSearchParams(location.search);
+const TILE_DEG = 0.005; // ~500m 격자
+const getJson = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(u + " " + r.status); return r.json(); });
+
+async function loadTiles(lat, lon) {
+  const tLat = Math.floor(lat / TILE_DEG), tLon = Math.floor(lon / TILE_DEG);
+  const cLat = (tLat + 0.5) * TILE_DEG, cLon = (tLon + 0.5) * TILE_DEG;
+  const KX = Math.cos(cLat * Math.PI / 180) * 111320, KZ = 110540;
+  const ids = [];
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++)
+      ids.push(`${tLat + dy}_${tLon + dx}`);
+  const tiles = (await Promise.all(
+    ids.map(id => fetch(`data/tiles/${id}.json`).then(r => r.ok ? r.json() : null).catch(() => null))
+  )).filter(Boolean);
+  if (!tiles.length) return null;
+  const buildings = [], roads = [], names = [];
+  for (const t of tiles) {
+    const ox = (t.lon - cLon) * KX, oz = -(t.lat - cLat) * KZ;
+    for (const b of t.buildings) {
+      const xy = b[1].slice();
+      for (let i = 0; i < xy.length; i += 2) { xy[i] += ox; xy[i + 1] += oz; }
+      buildings.push([b[0], xy, b[2], b[3]]);
+    }
+    for (const r of t.roads)
+      roads.push([r[0], r[1], r[2] + ox, r[3] + oz, r[4] + ox, r[5] + oz]);
+    for (const n of (t.names || []))
+      names.push([n[0] + ox, n[1] + oz, n[2]]);
+  }
+  const fhs = tiles.map(t => t.floorH).filter(Boolean);
+  return {
+    lat: cLat, lon: cLon, R: 750,
+    floorH: fhs.reduce((a, b) => a + b, 0) / fhs.length || 3.2,
+    buildings, roads, names, targets: [], terrain: null,
+    label: "위치 주변", source: "국토교통부 GIS건물통합정보 (공공누리 제1유형)"
+  };
+}
+
+function applyEvents(D) {
+  const evs = window.EVENTS;
+  if (!evs || !evs.length) return;
+  const KX = Math.cos(D.lat * Math.PI / 180) * 111320, KZ = 110540;
+  const added = evs.map(e => ({
+    name: e.name, note: e.note, kind: e.kind, approx: true,
+    x: Math.round((e.lon - D.lon) * KX * 10) / 10,
+    y: e.alt,
+    z: Math.round(-(e.lat - D.lat) * KZ * 10) / 10
+  }));
+  D.targets = [...(D.targets || []), ...added];
+}
+
+getJson("data/events.json").then(ev => { window.EVENTS = ev; }).catch(() => {});
+
+getJson("data/regions.json")
+  .then(async (regs) => {
+    window.REGIONS = regs;
+    const tileId = PARAMS.get("tile");
+    if (tileId) {
+      const [tLat, tLon] = tileId.split("_").map(Number);
+      const D = await loadTiles((tLat + 0.5) * TILE_DEG, (tLon + 0.5) * TILE_DEG);
+      if (D) {
+        const near = [...regs].sort((a, b) =>
+          Math.hypot((a.lon - D.lon) * 111320, (a.lat - D.lat) * 110540) -
+          Math.hypot((b.lon - D.lon) * 111320, (b.lat - D.lat) * 110540))[0];
+        if (near) await getJson("data/" + near.file).then(rd => { D.targets = rd.targets || []; }).catch(() => {});
+        applyEvents(D); start(D); return;
+      }
+    }
+    const reg = regs.find((x) => x.id === PARAMS.get("r")) || regs[0];
+    return getJson("data/" + reg.file).then((D) => { D.regionId = reg.id; applyEvents(D); start(D); });
+  })
+  .catch((e) => { document.getElementById("hint").textContent = "건물 데이터를 못 읽었어요 (" + e.message + ")"; });
+</script>
+</body>
+</html>

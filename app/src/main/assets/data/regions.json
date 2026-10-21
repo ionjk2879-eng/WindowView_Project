@@ -1,0 +1,18 @@
+[
+ {
+  "id": "eunhaeng",
+  "label": "대전 은행동",
+  "file": "eunhaeng.json",
+  "lat": 36.32772,
+  "lon": 127.4276,
+  "R": 320.0
+ },
+ {
+  "id": "dunsan",
+  "label": "대전 둔산동",
+  "file": "dunsan.json",
+  "lat": 36.3494,
+  "lon": 127.37682,
+  "R": 320.0
+ }
+]
