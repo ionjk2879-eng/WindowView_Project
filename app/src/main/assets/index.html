@@ -1104,7 +1104,10 @@ function start(D) {
     searchOverlay.hidden = true;
     searchInput.value = "";
   });
-  searchInput.addEventListener("input", () => runSearch(searchInput.value));
+  let composing = false;
+  searchInput.addEventListener("compositionstart", () => composing = true);
+  searchInput.addEventListener("compositionend", () => { composing = false; runSearch(searchInput.value); });
+  searchInput.addEventListener("input", () => { if (!composing) runSearch(searchInput.value); });
 
   requestAnimationFrame(frame);
 }
