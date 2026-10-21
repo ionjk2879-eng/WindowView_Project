@@ -1074,23 +1074,36 @@ function start(D) {
 
   function runSearch(q) {
     const qq = q.trim();
-    const hits = qq
-      ? searchNames.filter(n => n[2].includes(qq)).slice(0, 50)
-      : searchNames.slice(0, 50);
-    if (!hits.length) {
+    // 로컬: 현재 로드된 타일 이름 (로컬 좌표)
+    const local = qq ? searchNames.filter(n => n[2].includes(qq)).slice(0, 20) : searchNames.slice(0, 20);
+    // 글로벌: names_index.json (위도·경도)
+    const KX = Math.cos(D.lat * Math.PI / 180) * 111320, KZ = 110540;
+    const localNames = new Set(local.map(n => n[2]));
+    const global = qq && window.NAMES_IDX
+      ? window.NAMES_IDX
+          .filter(n => n[0].includes(qq) && !localNames.has(n[0]))
+          .map(n => ({ name: n[0], lat: n[1], lon: n[2], dist: Math.round(Math.hypot((n[2] - D.lon) * KX, (n[1] - D.lat) * KZ)) }))
+          .sort((a, b) => a.dist - b.dist).slice(0, 30)
+      : [];
+    if (!local.length && !global.length) {
       searchList.innerHTML = `<div class="search-empty">${qq ? "결과 없어요" : "건물 이름 데이터가 없어요"}</div>`;
       return;
     }
-    searchList.innerHTML = hits.map((n, i) => {
-      const dist = Math.round(Math.hypot(n[0] - win.x, n[1] - win.z));
-      return `<button class="sresult" data-i="${i}" type="button"><div class="sresult-name">${n[2]}</div><div class="sresult-dist">${dist}m</div></button>`;
-    }).join("");
-    searchList.querySelectorAll(".sresult").forEach((el, i) => {
+    const fmtD = d => d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
+    searchList.innerHTML =
+      local.map((n, i) => `<button class="sresult" data-t="l" data-i="${i}" type="button"><div class="sresult-name">${n[2]}</div><div class="sresult-dist">${Math.round(Math.hypot(n[0] - win.x, n[1] - win.z))}m</div></button>`).join("") +
+      global.map((g, i) => `<button class="sresult" data-t="g" data-i="${i}" type="button"><div class="sresult-name">${g.name}</div><div class="sresult-dist">${fmtD(g.dist)}</div></button>`).join("");
+    searchList.querySelectorAll("[data-t='l']").forEach((el, i) => {
       el.addEventListener("click", () => {
-        const w = pickWall(hits[i][0], hits[i][1], null);
+        const w = pickWall(local[i][0], local[i][1], null);
         if (w) setWindow(w.bi, w.x, w.z, w.nx, w.nz, win.floor, true);
-        searchOverlay.hidden = true;
-        searchInput.value = "";
+        searchOverlay.hidden = true; searchInput.value = "";
+      });
+    });
+    searchList.querySelectorAll("[data-t='g']").forEach((el, i) => {
+      el.addEventListener("click", () => {
+        searchOverlay.hidden = true; searchInput.value = "";
+        loadTiles(global[i].lat, global[i].lon);
       });
     });
   }
@@ -1164,6 +1177,7 @@ function applyEvents(D) {
 }
 
 getJson("data/events.json").then(ev => { window.EVENTS = ev; }).catch(() => {});
+getJson("data/names_index.json").then(idx => { window.NAMES_IDX = idx; }).catch(() => {});
 
 getJson("data/regions.json")
   .then(async (regs) => {
