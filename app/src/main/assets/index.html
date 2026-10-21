@@ -1174,12 +1174,15 @@ function applyEvents(D) {
   const evs = window.EVENTS;
   if (!evs || !evs.length) return;
   const KX = Math.cos(D.lat * Math.PI / 180) * 111320, KZ = 110540;
-  const added = evs.map(e => ({
-    name: e.name, note: e.note, kind: e.kind, approx: true,
-    x: Math.round((e.lon - D.lon) * KX * 10) / 10,
-    y: e.alt,
-    z: Math.round(-(e.lat - D.lat) * KZ * 10) / 10
-  }));
+  const MAX_DIST = 30000; // 30km 초과 이벤트는 표시 안 함
+  const added = evs
+    .filter(e => Math.hypot((e.lon - D.lon) * KX, (e.lat - D.lat) * KZ) <= MAX_DIST)
+    .map(e => ({
+      name: e.name, note: e.note, kind: e.kind, approx: true,
+      x: Math.round((e.lon - D.lon) * KX * 10) / 10,
+      y: e.alt,
+      z: Math.round(-(e.lat - D.lat) * KZ * 10) / 10
+    }));
   D.targets = [...(D.targets || []), ...added];
 }
 
