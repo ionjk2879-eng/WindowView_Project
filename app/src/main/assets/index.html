@@ -1103,7 +1103,7 @@ function start(D) {
     searchList.querySelectorAll("[data-t='g']").forEach((el, i) => {
       el.addEventListener("click", () => {
         searchOverlay.hidden = true; searchInput.value = "";
-        loadTiles(global[i].lat, global[i].lon);
+        loadTiles(global[i].lat, global[i].lon).then(D => { if (D) { applyEvents(D); start(D); } });
       });
     });
   }
