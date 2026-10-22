@@ -212,6 +212,24 @@
           <button type="button" id="floorUp" aria-label="한 층 위">+</button>
         </div>
       </div>
+      <div id="dirRow" hidden style="display:flex;flex-direction:column;gap:6px">
+        <span class="label">창문이 향하는 방향</span>
+        <div class="chips" id="dirChips" aria-label="창문 방향">
+          <button type="button" data-dir="N" aria-pressed="false">북</button>
+          <button type="button" data-dir="NE" aria-pressed="false">북동</button>
+          <button type="button" data-dir="E" aria-pressed="false">동</button>
+          <button type="button" data-dir="SE" aria-pressed="false">남동</button>
+          <button type="button" data-dir="S" aria-pressed="false">남</button>
+          <button type="button" data-dir="SW" aria-pressed="false">남서</button>
+          <button type="button" data-dir="W" aria-pressed="false">서</button>
+          <button type="button" data-dir="NW" aria-pressed="false">북서</button>
+        </div>
+      </div>
+      <div id="winViewRow" hidden>
+        <div class="chips">
+          <button type="button" id="btnWinView" aria-pressed="false">창밖에서 보기</button>
+        </div>
+      </div>
       <div id="modePanel"></div>
       <div class="note" id="note"></div>
     </div>
@@ -532,14 +550,27 @@ function start(D) {
 
   // ───────── 카메라 ─────────
   const cam = { yaw: 0, pitch: 0.55, dist: 150, target: new THREE.Vector3() };
+  let winView = false;
   function placeCamera() {
-    const cp = Math.cos(cam.pitch);
-    camera.position.set(
-      cam.target.x + Math.sin(cam.yaw) * cp * cam.dist,
-      cam.target.y + Math.sin(cam.pitch) * cam.dist,
-      cam.target.z + Math.cos(cam.yaw) * cp * cam.dist
-    );
-    camera.lookAt(cam.target);
+    if (winView && win.b >= 0) {
+      const [wx, wy, wz] = winPos();
+      camera.position.set(wx, wy, wz);
+      const az = Math.atan2(win.nx, win.nz) + cam.yaw;
+      const pt = Math.max(-1.2, Math.min(1.2, cam.pitch));
+      const cp = Math.cos(pt);
+      camera.lookAt(wx + Math.sin(az) * cp * 200, wy + Math.sin(pt) * 200, wz + Math.cos(az) * cp * 200);
+      camera.fov = 60;
+    } else {
+      const cp = Math.cos(cam.pitch);
+      camera.position.set(
+        cam.target.x + Math.sin(cam.yaw) * cp * cam.dist,
+        cam.target.y + Math.sin(cam.pitch) * cam.dist,
+        cam.target.z + Math.cos(cam.yaw) * cp * cam.dist
+      );
+      camera.lookAt(cam.target);
+      camera.fov = 40;
+    }
+    camera.updateProjectionMatrix();
   }
   function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
@@ -591,6 +622,9 @@ function start(D) {
   // ───────── 창문 정하기 ─────────
   function setWindow(bi, x, z, nx, nz, floor, moveCam) {
     Object.assign(win, { b: bi, x, z, nx, nz, floor });
+    document.getElementById("dirRow").hidden = false;
+    document.getElementById("winViewRow").hidden = false;
+    if (winView) { winView = false; document.getElementById("btnWinView").setAttribute("aria-pressed", "false"); cam.pitch = 0.55; }
     document.getElementById("hint").textContent = "다른 건물 벽을 누르면 창문을 바꿀 수 있어요";
     // 강조 건물
     const b = B[bi];
@@ -618,6 +652,32 @@ function start(D) {
   document.getElementById("floorDown").addEventListener("click", () => { if (win.floor > 1) { win.floor--; update(); } });
   document.getElementById("floorUp").addEventListener("click", () => { if (win.b >= 0 && win.floor < B[win.b].fl) { win.floor++; update(); } });
 
+  const DIR_VECS = {
+    N:[0,-1], NE:[0.707,-0.707], E:[1,0], SE:[0.707,0.707],
+    S:[0,1], SW:[-0.707,0.707], W:[-1,0], NW:[-0.707,-0.707]
+  };
+  const DIR_KEY_OF = {"북":"N","북동":"NE","동":"E","남동":"SE","남":"S","남서":"SW","서":"W","북서":"NW"};
+  function updateDirChips() {
+    const key = DIR_KEY_OF[compass(win.nx, win.nz)] || "N";
+    document.querySelectorAll("#dirChips button").forEach(b =>
+      b.setAttribute("aria-pressed", String(b.dataset.dir === key)));
+  }
+  document.getElementById("dirChips").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b || win.b < 0) return;
+    const [nx, nz] = DIR_VECS[b.dataset.dir];
+    Object.assign(win, { nx, nz });
+    update();
+  });
+
+  document.getElementById("btnWinView").addEventListener("click", () => {
+    winView = !winView;
+    document.getElementById("btnWinView").setAttribute("aria-pressed", String(winView));
+    if (winView) { cam.yaw = 0; cam.pitch = 0; }
+    else { cam.pitch = 0.55; cam.target.set(win.x, winY(), win.z); }
+    placeCamera();
+  });
+
   const fmtHM = (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? (m ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`; };
   const fmtClock = (min) => { const t = Math.round(min), h = Math.floor(t / 60) % 24, m = t % 60; return `${h}:${String(m).padStart(2, "0")}`; };
   const fmtDist = (d) => (d >= 1000 ? (d / 1000).toFixed(1) + "km" : Math.round(d) + "m");
@@ -626,6 +686,7 @@ function start(D) {
   const panel = document.getElementById("modePanel");
   function update() {
     placeWinMark();
+    updateDirChips();
     floorVal.textContent = win.floor + "층";
     document.getElementById("floorDown").disabled = win.floor <= 1;
     document.getElementById("floorUp").disabled = win.floor >= B[win.b].fl;
