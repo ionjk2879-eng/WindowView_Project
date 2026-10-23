@@ -29,22 +29,11 @@ from pyproj import Transformer
 REGIONS = {
     "eunhaeng": {  # 대전 중구 은행동
         "lat": 36.32772, "lon": 127.42760, "R": 320.0, "label": "대전 은행동",
-        "targets": [
-            ("대전천 불꽃 (예시 지점)", 127.4292, 36.3299, 150, "fireworks", False),
-            ("한국철도공사 쌍둥이빌딩", 127.43586, 36.33213, 120, "tower", True),
-            ("보문산 정상 쪽", 127.4255, 36.3048, 340, "mountain", True),
-            ("옛 충남도청", 127.4206, 36.3273, 18, "landmark", True),
-        ],
+        "targets": [],
     },
     "dunsan": {  # 대전 서구 둔산동 (대덕대로 179 일대)
         "lat": 36.34940, "lon": 127.37682, "R": 320.0, "label": "대전 둔산동",
-        "targets": [  # 위치·높이 모두 GIS건물통합정보 값
-            ("대전광역시청사", 127.38465, 36.35035, 98, "tower", False),
-            ("대전광역시교육청", 127.38374, 36.35241, 40, "landmark", False),
-            ("대전지방경찰청사", 127.38585, 36.35466, 50, "landmark", False),
-            ("롯데백화점 대전점", 127.38956, 36.34064, 58, "landmark", False),
-            ("TJB 대전방송 사옥", 127.39409, 36.37526, 78, "tower", False),
-        ],
+        "targets": [],
     },
 }
 REGION = REGIONS[sys.argv[4] if len(sys.argv) > 4 else "eunhaeng"]
