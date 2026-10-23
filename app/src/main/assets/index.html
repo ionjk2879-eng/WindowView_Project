@@ -179,13 +179,33 @@
   .onboard { position: fixed; inset: 0; z-index: 300; background: rgba(17,21,27,0.72); display: flex; align-items: center; justify-content: center; padding: 24px; }
   .onboard[hidden] { display: none; }
   .onboard-box { background: var(--panel); border-radius: 20px; padding: 28px 24px; max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.24); }
-  .onboard-box h2 { margin: 0 0 6px; font-size: 20px; }
-  .onboard-box p { margin: 0 0 20px; font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; }
+  .onboard-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .onboard-head h2 { margin: 0; font-size: 20px; }
+  .onboard-head button { width: 32px; height: 32px; border: 0; background: var(--chip); border-radius: 8px; font-size: 16px; cursor: pointer; color: var(--ink); flex-shrink: 0; }
+  .onboard-box > p { margin: 0 0 20px; font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; }
   .onboard-steps { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
   .onboard-step { display: flex; gap: 12px; align-items: flex-start; }
   .onboard-num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .onboard-step p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink); }
-  .onboard-ok { width: 100%; padding: 14px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .onboard-btns { display: flex; gap: 8px; }
+  .onboard-skip { flex: 1; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .onboard-ok { flex: 1.5; padding: 13px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+  /* 설정 오버레이 */
+  .settings-overlay { position: fixed; inset: 0; z-index: 200; background: var(--panel); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+  .settings-overlay[hidden] { display: none; }
+  .settings-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .settings-head span { flex: 1; font-size: 16px; font-weight: 700; }
+  .settings-head button { width: 36px; height: 36px; border: 0; background: var(--chip); border-radius: 8px; font-size: 16px; cursor: pointer; color: var(--ink); flex-shrink: 0; }
+  .settings-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 28px; max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+  .settings-section-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 12px; }
+  .guide-list { display: flex; flex-direction: column; gap: 16px; }
+  .guide-item { display: flex; gap: 14px; align-items: flex-start; }
+  .guide-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 17px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .guide-item-body { display: flex; flex-direction: column; gap: 2px; }
+  .guide-item-title { font-size: 14px; font-weight: 700; }
+  .guide-item-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+  .settings-action { width: 100%; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; }
 
   /* 오류 토스트 */
   .err-toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: rgba(21,26,35,0.92); color: #fff; border-radius: 12px; padding: 12px 18px; font-size: 13.5px; line-height: 1.5; max-width: calc(100% - 32px); text-align: center; z-index: 400; transition: opacity 0.3s; }
@@ -213,7 +233,10 @@
       <div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div class="eyebrow">대전 은행동 샘플</div>
-          <button type="button" id="btnSearch" class="search-btn">건물 검색</button>
+          <div style="display:flex;gap:6px">
+            <button type="button" id="btnSearch" class="search-btn">건물 검색</button>
+            <button type="button" id="btnSettings" class="search-btn" aria-label="사용 가이드">?</button>
+          </div>
         </div>
         <h1>이 창문에서 뭐가 보일까?</h1>
       </div>
@@ -256,7 +279,10 @@
 <!-- 온보딩: 첫 실행 시만 표시 -->
 <div class="onboard" id="onboarding" hidden aria-modal="true" role="dialog">
   <div class="onboard-box">
-    <h2>창밖 뷰 계산기</h2>
+    <div class="onboard-head">
+      <h2>창밖 뷰 계산기</h2>
+      <button type="button" id="onboardClose" aria-label="닫기">✕</button>
+    </div>
     <p>내가 사는 방 창문에서 뭐가 보이는지, 햇빛은 언제 드는지 계산해요.</p>
     <div class="onboard-steps">
       <div class="onboard-step"><span class="onboard-num">1</span><p>건물 벽을 눌러 내 방 창문을 고르세요</p></div>
@@ -264,7 +290,90 @@
       <div class="onboard-step"><span class="onboard-num">3</span><p>창밖 뷰·햇빛·불꽃놀이 가시성을 확인하세요</p></div>
       <div class="onboard-step"><span class="onboard-num">4</span><p><b>내 위치</b> 버튼을 누르면 GPS로 자동으로 내 건물을 찾아줘요</p></div>
     </div>
-    <button class="onboard-ok" id="onboardOk">시작하기</button>
+    <div class="onboard-btns">
+      <button class="onboard-skip" type="button" id="onboardSkip">닫기</button>
+      <button class="onboard-ok" type="button" id="onboardOk">다시 보지 않기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 설정 / 사용 가이드 오버레이 -->
+<div class="settings-overlay" id="settingsOverlay" hidden>
+  <div class="settings-head">
+    <button type="button" id="settingsClose" aria-label="닫기">✕</button>
+    <span>사용 가이드</span>
+  </div>
+  <div class="settings-body">
+    <div>
+      <div class="settings-section-title">기본 사용법</div>
+      <div class="guide-list">
+        <div class="guide-item">
+          <div class="guide-icon">👆</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">창문 선택</div>
+            <div class="guide-item-desc">3D 화면에서 건물 벽을 눌러 창문을 고르세요. 층수 버튼으로 정확한 층을 맞출 수 있어요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">🧭</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">내 위치 · 나침반</div>
+            <div class="guide-item-desc"><b>내 위치</b> 버튼으로 GPS 자동 감지, <b>나침반</b> 버튼으로 휴대폰을 돌리면 화면도 같이 돌아가요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">🔍</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">건물 검색</div>
+            <div class="guide-item-desc">건물 이름으로 검색해 다른 위치로 이동할 수 있어요. 키보드에서 <b>/</b> 키를 눌러도 열려요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">↕️</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">창밖에서 보기</div>
+            <div class="guide-item-desc">창문을 고른 뒤 <b>창밖에서 보기</b> 버튼으로 1인칭 시점으로 전환할 수 있어요.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="settings-section-title">계산 기능</div>
+      <div class="guide-list">
+        <div class="guide-item">
+          <div class="guide-icon">🏙️</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">창밖 뷰</div>
+            <div class="guide-item-desc">선택한 창문에서 보이는 건물·지형·이벤트를 분석해요. 지형 차폐(30km)까지 반영돼요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">☀️</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">햇빛 시간</div>
+            <div class="guide-item-desc">봄·여름·가을·겨울 4계절 기준으로 이 창문에 햇빛이 드는 시간대를 계산해요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">🎆</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">불꽃놀이 가시성</div>
+            <div class="guide-item-desc">주변 불꽃놀이 행사가 이 창문에서 보이는지 지형·건물 차폐를 모두 반영해 계산해요.</div>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">📤</div>
+          <div class="guide-item-body">
+            <div class="guide-item-title">결과 공유</div>
+            <div class="guide-item-desc"><b>공유</b> 버튼으로 3D 화면과 결과를 이미지로 저장하거나 카톡·인스타 등으로 공유할 수 있어요.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="settings-section-title">설정</div>
+      <button class="settings-action" id="btnShowOnboarding" type="button">사용 안내 다시 보기</button>
+    </div>
   </div>
 </div>
 
@@ -1226,6 +1335,27 @@ function start(D) {
     searchOverlay.hidden = true;
     searchInput.value = "";
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && searchOverlay.hidden && document.activeElement !== searchInput) {
+      e.preventDefault();
+      searchOverlay.hidden = false;
+      setTimeout(() => searchInput.focus(), 30);
+      runSearch("");
+    } else if (e.key === "Escape" && !searchOverlay.hidden) {
+      searchOverlay.hidden = true; searchInput.value = "";
+    } else if (!searchOverlay.hidden && document.activeElement !== searchInput) {
+      // WebView에서 focus()가 실제 입력을 가로채지 못할 때: 키를 직접 input으로 라우팅
+      if (e.key === "Backspace") {
+        searchInput.value = searchInput.value.slice(0, -1);
+        runSearch(searchInput.value);
+        e.preventDefault();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        searchInput.value += e.key;
+        runSearch(searchInput.value);
+        e.preventDefault();
+      }
+    }
+  });
   let composing = false;
   searchInput.addEventListener("compositionstart", () => composing = true);
   searchInput.addEventListener("compositionend", () => { composing = false; runSearch(searchInput.value); });
@@ -1249,16 +1379,27 @@ function showErrToast(msg, onAction) {
   _toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
 }
 
-// ── 온보딩: 첫 실행 시만 표시 ──
-(function () {
-  if (localStorage.getItem("wv_seen")) return;
-  const el = document.getElementById("onboarding");
-  el.hidden = false;
-  document.getElementById("onboardOk").addEventListener("click", () => {
-    el.hidden = true;
-    localStorage.setItem("wv_seen", "1");
-  });
-})();
+// ── 온보딩 ──
+function openOnboarding() {
+  document.getElementById("onboarding").hidden = false;
+}
+function closeOnboarding(remember) {
+  document.getElementById("onboarding").hidden = true;
+  if (remember) localStorage.setItem("wv_seen_v2", "1");
+}
+document.getElementById("onboardClose").addEventListener("click", () => closeOnboarding(false));
+document.getElementById("onboardSkip").addEventListener("click", () => closeOnboarding(false));
+document.getElementById("onboardOk").addEventListener("click", () => closeOnboarding(true));
+if (!localStorage.getItem("wv_seen_v2")) openOnboarding();
+
+// ── 설정 / 사용 가이드 ──
+const settingsOverlay = document.getElementById("settingsOverlay");
+document.getElementById("btnSettings").addEventListener("click", () => { settingsOverlay.hidden = false; });
+document.getElementById("settingsClose").addEventListener("click", () => { settingsOverlay.hidden = true; });
+document.getElementById("btnShowOnboarding").addEventListener("click", () => {
+  settingsOverlay.hidden = true;
+  openOnboarding();
+});
 
 async function loadTiles(lat, lon) {
   const tLat = Math.floor(lat / TILE_DEG), tLon = Math.floor(lon / TILE_DEG);
